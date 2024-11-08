@@ -1,0 +1,273 @@
+import math
+import random
+import colorsys
+from PIL import Image, ImageDraw, ImageFont
+
+class Cell:
+    def __init__(self, id, biome_index):
+        self.id = id  # Unique identifier
+        self.biome_index = biome_index  # Biome index
+        self.doors = {'N': False, 'S': False, 'E': False, 'W': False}
+
+    def __repr__(self):
+        doors = ''.join([d for d, open in self.doors.items() if open])
+        return f"Cell[{self.id}][{doors}]"
+
+    def draw(self, draw, i, j, cell_size=100, door_size=20, fill_color="white"):
+        x0 = j * cell_size
+        y0 = i * cell_size
+        x1 = x0 + cell_size
+        y1 = y0 + cell_size
+
+        # Draw the cell background with biome color
+        draw.rectangle([x0, y0, x1, y1], fill=fill_color)
+
+        wall_width = 1  # Wall line width
+        # Draw walls with or without doors
+        if not self.doors['N']:
+            draw.line([(x0, y0), (x1, y0)], fill="black", width=wall_width)
+        else:
+            wall_part = (cell_size - door_size) // 2
+            draw.line([(x0, y0), (x0 + wall_part, y0)], fill="black", width=wall_width)
+            draw.line([(x1 - wall_part, y0), (x1, y0)], fill="black", width=wall_width)
+
+        if not self.doors['S']:
+            draw.line([(x0, y1), (x1, y1)], fill="black", width=wall_width)
+        else:
+            wall_part = (cell_size - door_size) // 2
+            draw.line([(x0, y1), (x0 + wall_part, y1)], fill="black", width=wall_width)
+            draw.line([(x1 - wall_part, y1), (x1, y1)], fill="black", width=wall_width)
+
+        if not self.doors['W']:
+            draw.line([(x0, y0), (x0, y1)], fill="black", width=wall_width)
+        else:
+            wall_part = (cell_size - door_size) // 2
+            draw.line([(x0, y0), (x0, y0 + wall_part)], fill="black", width=wall_width)
+            draw.line([(x0, y1 - wall_part), (x0, y1)], fill="black", width=wall_width)
+
+        if not self.doors['E']:
+            draw.line([(x1, y0), (x1, y1)], fill="black", width=wall_width)
+        else:
+            wall_part = (cell_size - door_size) // 2
+            draw.line([(x1, y0), (x1, y0 + wall_part)], fill="black", width=wall_width)
+            draw.line([(x1, y1 - wall_part), (x1, y1)], fill="black", width=wall_width)
+
+        # Draw the cell number at the center
+        center_x = x0 + cell_size // 2
+        center_y = y0 + cell_size // 2
+        text = str(self.id)
+        font = ImageFont.load_default()
+
+        # Use textbbox to get text dimensions
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        text_x = center_x - text_width // 2
+        text_y = center_y - text_height // 2
+        draw.text((text_x, text_y), text, fill="black", font=font)
+
+class Labyrinth:
+    def __init__(self, grid_size, number_of_biomes):
+        self.grid_size = grid_size
+        self.number_of_biomes = number_of_biomes
+        self.biome_grid_size = int(math.isqrt(number_of_biomes))
+        self.biome_colors = self.generate_biome_colors()
+        self.grid = self.create_labyrinth()
+        self.biomes = self.divide_into_biomes()
+
+    def generate_biome_colors(self):
+        num_biomes = self.number_of_biomes
+        colors = []
+        for i in range(num_biomes):
+            hue = i / num_biomes
+            lightness = 0.8  # light colors
+            saturation = 0.5
+            r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
+            r = int(r * 255)
+            g = int(g * 255)
+            b = int(b * 255)
+            colors.append((r, g, b))
+        return colors
+
+    def create_labyrinth(self):
+        grid_size = self.grid_size
+        grid = []
+        cell_id = 0
+        for x in range(grid_size):
+            row = []
+            for y in range(grid_size):
+                # Temporary biome index; will be assigned in divide_into_biomes
+                cell = Cell(cell_id, biome_index=-1)
+                cell_id += 1
+                row.append(cell)
+            grid.append(row)
+        # Randomly assign doors
+        for x in range(grid_size):
+            for y in range(grid_size):
+                cell = grid[x][y]
+                # Randomly assign doors, making sure not to go out of bounds
+                if x > 0:
+                    cell.doors['N'] = random.choices([True, False], weights=[0.75, 0.25], k=1)[0]
+                if x < grid_size - 1:
+                    cell.doors['S'] = random.choices([True, False], weights=[0.75, 0.25], k=1)[0]
+                if y > 0:
+                    cell.doors['W'] = random.choices([True, False], weights=[0.75, 0.25], k=1)[0]
+                if y < grid_size -1:
+                    cell.doors['E'] = random.choices([True, False], weights=[0.75, 0.25], k=1)[0]
+        return grid
+
+    def divide_into_biomes(self):
+        grid_size = len(self.grid)
+        biome_size = grid_size // self.biome_grid_size
+        biomes = []
+        biome_index = 0
+        for i in range(self.biome_grid_size):
+            for j in range(self.biome_grid_size):
+                biome = []
+                for x in range(i * biome_size, (i + 1) * biome_size):
+                    for y in range(j * biome_size, (j + 1) * biome_size):
+                        cell = self.grid[x][y]
+                        cell.biome_index = biome_index  # Assign biome index to cell
+                        biome.append(cell)
+                biomes.append(biome)
+                biome_index += 1
+        return biomes
+
+    def rotate_layer(self, layer_number, direction='clockwise'):
+        n = self.grid_size
+        layer = layer_number
+        num_elements = n - 2 * layer - 1
+        for i in range(num_elements):
+            # Coordinates of the elements to be swapped
+            top = (layer, layer + i)
+            left = (n - layer - i - 1, layer)
+            bottom = (n - layer -1, n - layer - i -1)
+            right = (layer + i, n - layer -1)
+            if direction == 'clockwise':
+                # Perform the rotation clockwise
+                temp = self.grid[top[0]][top[1]]
+                self.grid[top[0]][top[1]] = self.grid[left[0]][left[1]]
+                self.grid[left[0]][left[1]] = self.grid[bottom[0]][bottom[1]]
+                self.grid[bottom[0]][bottom[1]] = self.grid[right[0]][right[1]]
+                self.grid[right[0]][right[1]] = temp
+            elif direction == 'counterclockwise':
+                # Perform the rotation counterclockwise
+                temp = self.grid[top[0]][top[1]]
+                self.grid[top[0]][top[1]] = self.grid[right[0]][right[1]]
+                self.grid[right[0]][right[1]] = self.grid[bottom[0]][bottom[1]]
+                self.grid[bottom[0]][bottom[1]] = self.grid[left[0]][left[1]]
+                self.grid[left[0]][left[1]] = temp
+            else:
+                raise ValueError("Invalid direction. Use 'clockwise' or 'counterclockwise'.")
+
+    def rotate_biome(self, biome_index, direction='clockwise'):
+        biome_size = self.grid_size // self.biome_grid_size
+        # Get biome grid
+        biome_row = biome_index // self.biome_grid_size
+        biome_col = biome_index % self.biome_grid_size
+        x_start = biome_row * biome_size
+        y_start = biome_col * biome_size
+
+        # Extract the biome grid
+        biome_grid = [row[y_start:y_start+biome_size] for row in self.grid[x_start:x_start+biome_size]]
+        # Rotate biome grid 90 degrees
+        if direction == 'clockwise':
+            rotated_biome = [list(row) for row in zip(*biome_grid[::-1])]
+        elif direction == 'counterclockwise':
+            rotated_biome = [list(row) for row in zip(*biome_grid)]
+            rotated_biome = rotated_biome[::-1]
+        else:
+            raise ValueError("Invalid direction. Use 'clockwise' or 'counterclockwise'.")
+
+        # Place rotated biome back into grid
+        for i in range(biome_size):
+            for j in range(biome_size):
+                self.grid[x_start + i][y_start + j] = rotated_biome[i][j]
+
+    def draw(self, cell_size=100, door_size=20):
+        img_size = self.grid_size * cell_size
+        image = Image.new('RGB', (img_size, img_size), 'white')
+        draw = ImageDraw.Draw(image)
+        for i, row in enumerate(self.grid):
+            for j, cell in enumerate(row):
+                biome_index = cell.biome_index
+                fill_color = self.biome_colors[biome_index]
+                cell.draw(draw, i, j, cell_size, door_size, fill_color)
+        return image
+
+def main():
+    labyrinth_area = int(input("Enter labyrinth area (number of cells): "))
+    number_of_biomes = int(input("Enter number of biomes (must be a perfect square): "))
+    biome_grid_size = int(math.isqrt(number_of_biomes))
+    if biome_grid_size ** 2 != number_of_biomes:
+        print("Number of biomes must be a perfect square.")
+        return
+    grid_size = int(math.isqrt(labyrinth_area))
+    if grid_size ** 2 != labyrinth_area:
+        grid_size = biome_grid_size * (grid_size // biome_grid_size + 1)
+        print(f"Adjusted grid size to {grid_size}x{grid_size} to accommodate biomes.")
+
+    labyrinth = Labyrinth(grid_size, number_of_biomes)
+    print("Initial Labyrinth:")
+    labyrinth_image = labyrinth.draw()
+    labyrinth_image.show()
+
+    while True:
+        print("\nRotation options:")
+        print("1. Rotate a layer")
+        print("2. Rotate a biome")
+        print("3. Rotate all layers (odd layers counterclockwise, even layers clockwise)")
+        print("4. Rotate all layers (odd layers clockwise, even layers counterclockwise)")
+        print("5. Rotate all biomes clockwise")
+        print("6. Rotate all biomes counterclockwise")
+        print("7. Exit")
+        action = input("Select an option (1-7): ").strip()
+        if action == '7':
+            break
+        elif action == '1':
+            layer_number = int(input(f"Enter layer number to rotate (0 to {grid_size//2 -1}): "))
+            direction = input("Enter direction (clockwise/counterclockwise): ").strip().lower()
+            labyrinth.rotate_layer(layer_number, direction)
+            print(f"Labyrinth after rotating layer {layer_number} {direction}:")
+            labyrinth_image = labyrinth.draw()
+            labyrinth_image.show()
+        elif action == '2':
+            biome_index = int(input(f"Enter biome index to rotate (0 to {number_of_biomes -1}): "))
+            direction = input("Enter direction (clockwise/counterclockwise): ").strip().lower()
+            labyrinth.rotate_biome(biome_index, direction)
+            print(f"Labyrinth after rotating biome {biome_index} {direction}:")
+            labyrinth_image = labyrinth.draw()
+            labyrinth_image.show()
+        elif action == '3':
+            for layer_number in range(grid_size // 2):
+                direction = 'counterclockwise' if layer_number % 2 else 'clockwise'
+                labyrinth.rotate_layer(layer_number, direction)
+            print("Labyrinth after rotating all layers (odd layers counterclockwise, even layers clockwise):")
+            labyrinth_image = labyrinth.draw()
+            labyrinth_image.show()
+        elif action == '4':
+            for layer_number in range(grid_size // 2):
+                direction = 'clockwise' if layer_number % 2 else 'counterclockwise'
+                labyrinth.rotate_layer(layer_number, direction)
+            print("Labyrinth after rotating all layers (odd layers clockwise, even layers counterclockwise):")
+            labyrinth_image = labyrinth.draw()
+            labyrinth_image.show()
+        elif action == '5':
+            for biome_index in range(labyrinth.number_of_biomes):
+                labyrinth.rotate_biome(biome_index, 'clockwise')
+            print("Labyrinth after rotating all biomes clockwise:")
+            labyrinth_image = labyrinth.draw()
+            labyrinth_image.show()
+        elif action == '6':
+            for biome_index in range(labyrinth.number_of_biomes):
+                labyrinth.rotate_biome(biome_index, 'counterclockwise')
+            print("Labyrinth after rotating all biomes counterclockwise:")
+            labyrinth_image = labyrinth.draw()
+            labyrinth_image.show()
+        else:
+            print("Invalid option.")
+
+                                      
+if __name__ == "__main__":
+    main()
